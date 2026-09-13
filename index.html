@@ -2,12 +2,68 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>calculator</title>
+    <title>SONORA — Terminal Player</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <main class="terminal-shell">
+      <header class="topbar">
+        <a class="brand" href="#"><span class="brand-mark">S</span>SONORA</a>
+        <div class="session"><span class="pulse"></span> LIVE SESSION <span class="muted">/ 04 TRACKS</span></div>
+        <button class="settings" aria-label="Open settings">⌘</button>
+      </header>
+
+      <section class="player-grid">
+        <aside class="sidebar">
+          <p class="eyebrow">LIBRARY</p>
+          <nav>
+            <button class="nav-item active"><span>▣</span> Now playing</button>
+            <button class="nav-item"><span>◫</span> Your library</button>
+            <button class="nav-item"><span>⌁</span> Discover</button>
+          </nav>
+          <div class="sidebar-bottom">
+            <p class="eyebrow">SYSTEM STATUS</p>
+            <p><i></i>AUDIO ENGINE <b>ONLINE</b></p>
+            <p><i></i>HI-FI MODE <b>ENABLED</b></p>
+          </div>
+        </aside>
+
+        <section class="content">
+          <div class="now-playing-label"><span>01</span> NOW PLAYING <em>STEREO</em></div>
+          <div class="hero">
+            <div class="album-art aurora" id="albumArt">
+              <div class="art-type">SYNTH<br><span>WAVES</span></div>
+              <div class="art-orb"></div>
+              <div class="art-no">01</div>
+            </div>
+            <div class="track-details">
+              <p class="eyebrow">CURRENT TRANSMISSION</p>
+              <h1 id="trackTitle">Midnight Protocol</h1>
+              <p class="artist" id="trackArtist">Orion Vale <span>—</span> Signals from Elsewhere</p>
+              <div class="waveform" id="waveform" aria-hidden="true"></div>
+              <div class="time-row"><span id="elapsed">0:00</span><span id="duration">3:42</span></div>
+              <input id="seek" class="seek" type="range" min="0" max="222" value="0" aria-label="Track progress" />
+              <div class="controls">
+                <button id="shuffle" class="icon-button" aria-label="Shuffle">↝</button>
+                <button id="previous" class="icon-button" aria-label="Previous track">|◀</button>
+                <button id="play" class="play-button" aria-label="Play track">▶</button>
+                <button id="next" class="icon-button" aria-label="Next track">▶|</button>
+                <button id="repeat" class="icon-button" aria-label="Repeat">↻</button>
+                <div class="volume"><span>◖</span><input id="volume" type="range" min="0" max="1" value="0.35" step="0.01" aria-label="Volume" /></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="queue-heading"><span>02</span><h2>QUEUE</h2><p>4 TRACKS · 14:24</p></div>
+          <div class="track-list" id="trackList"></div>
+        </section>
+      </section>
+      <footer><span>SONORA AUDIO SYSTEMS © 2024</span><span>128 KBPS <b>•</b> LOSSLESS READY</span><span>UTC+05:30 / 19:42:08</span></footer>
+    </main>
+    <script src="player.js"></script>
   </body>
 </html>
