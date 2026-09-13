@@ -11,6 +11,7 @@
  * Features:
  *   - Native ANSI terminal UI with interactive track queue & live progress bar
  *   - Dynamic library scanning: automatically discovers .mp3, .wav, .m4a in ./music
+ *   - Interactive volume control with visual meter & mute toggle (+, -, m)
  *   - Signal-based audio control (afplay on macOS, SIGSTOP/SIGCONT/SIGKILL)
  *   - Interactive raw keyboard event handling (Vim-style j/k, arrow keys, space)
  *   - Configurable playback modes: repeat track, shuffle queue
@@ -99,6 +100,9 @@ let playing = false;      // Playback status flag
 let elapsed = 0;        // Elapsed playback time in seconds
 let shuffle = false;      // Shuffle mode toggle
 let repeat = false;       // Loop current track toggle
+let volume = 80;          // Volume percentage (0 - 100)
+let muted = false;        // Mute toggle flag
+let previousVolume = 80;  // Previous volume level prior to mute
 let audioProcess = null; // Child process reference for native audio player
 let message = 'PLACE YOUR AUDIO FILES IN ./music TO PLAY';
 
@@ -111,7 +115,8 @@ const color = {
   white:  '\x1b[97m',
   cyan:   '\x1b[38;5;80m',
   orange: '\x1b[38;5;209m',
-  dark:   '\x1b[48;5;235m'
+  dark:   '\x1b[48;5;235m',
+  red:    '\x1b[38;5;196m'
 };
 
 // ----------------------------------------------------------------------------
@@ -145,6 +150,19 @@ const bar = (value, total, width = 44) => {
   return `${color.lime}${'━'.repeat(filled)}${color.dim}${'━'.repeat(width - filled)}${color.reset}`;
 };
 
+/**
+ * Renders a visual volume meter badge.
+ * @returns {string} Formatted volume badge
+ */
+const volumeMeter = () => {
+  if (muted) {
+    return `${color.red}[MUTED]${color.reset}`;
+  }
+  const blocks = Math.round((volume / 100) * 10);
+  const visual = '■'.repeat(blocks) + '·'.repeat(10 - blocks);
+  return `${color.cyan}VOL: ${String(volume).padStart(3)}% [${color.lime}${visual}${color.cyan}]${color.reset}`;
+};
+
 // ----------------------------------------------------------------------------
 // Terminal Rendering Engine
 // ----------------------------------------------------------------------------
@@ -176,7 +194,7 @@ function draw() {
 
   const ui = `
 ${color.lime}╔════════════════════════════════════════════════════════════════════╗${color.reset}
-${color.lime}║${color.reset}  ${color.white}S O N O R A${color.reset}  ${color.dim}/// TERMINAL MUSIC PLAYER${color.reset}                         ${color.lime}║${color.reset}
+${color.lime}║${color.reset}  ${color.white}S O N O R A${color.reset}  ${color.dim}/// TERMINAL MUSIC PLAYER${color.reset}   ${volumeMeter()} ${color.lime}║${color.reset}
 ${color.lime}╚════════════════════════════════════════════════════════════════════╝${color.reset}
 
   ${status}  ${color.dim}AUDIO ENGINE ONLINE · ${songs.length} TRACK(S) DISCOVERED${color.reset}
@@ -197,7 +215,8 @@ ${color.lime}╚═════════════════════�
 ${rows}
 
   ${color.dim}↑/↓ or J/K${color.reset} select     ${color.dim}SPACE${color.reset} play/pause     ${color.dim}←/→${color.reset} seek
-  ${color.dim}N/P${color.reset} next/previous     ${color.dim}S${color.reset} shuffle ${shuffle ? color.lime + 'ON' : color.dim + 'OFF'}${color.reset}     ${color.dim}R${color.reset} repeat ${repeat ? color.lime + 'ON' : color.dim + 'OFF'}${color.reset}     ${color.dim}L${color.reset} reload library     ${color.dim}Q${color.reset} quit
+  ${color.dim}+/-${color.reset} volume         ${color.dim}M${color.reset} mute toggle        ${color.dim}L${color.reset} reload library
+  ${color.dim}N/P${color.reset} next/prev       ${color.dim}S${color.reset} shuffle ${shuffle ? color.lime + 'ON' : color.dim + 'OFF'}${color.reset}       ${color.dim}R${color.reset} repeat ${repeat ? color.lime + 'ON' : color.dim + 'OFF'}${color.reset}       ${color.dim}Q${color.reset} quit
 `;
 
   // Write clear screen escape + home cursor + UI buffer
@@ -228,8 +247,17 @@ function stopAudio() {
 }
 
 /**
+ * Calculates current volume coefficient for afplay (-v flag).
+ * @returns {number} Value between 0.0 and 1.0
+ */
+function getVolumeLevel() {
+  if (muted) return 0;
+  return Number((volume / 100).toFixed(2));
+}
+
+/**
  * Initiates audio playback for the currently selected song.
- * Uses native macOS 'afplay' process.
+ * Uses native macOS 'afplay' process with volume parameter.
  * @returns {boolean} True if playback started successfully, false otherwise
  */
 function startAudio() {
@@ -246,7 +274,8 @@ function startAudio() {
 
   stopAudio();
   try {
-    audioProcess = spawn('afplay', [file], { stdio: 'ignore' });
+    const volArg = String(getVolumeLevel());
+    audioProcess = spawn('afplay', ['-v', volArg, file], { stdio: 'ignore' });
     message = `PLAYING: music/${songs[selected][4]}`;
 
     audioProcess.on('error', () => {
@@ -306,6 +335,42 @@ function reloadLibrary() {
   selected = Math.min(selected, Math.max(0, songs.length - 1));
   message = `LIBRARY RELOADED: ${songs.length} track(s)`;
   draw();
+}
+
+/**
+ * Adjusts volume level.
+ * @param {number} delta - Change in volume percentage
+ */
+function changeVolume(delta) {
+  if (muted) muted = false;
+  volume = Math.max(0, Math.min(100, volume + delta));
+  message = `VOLUME: ${volume}%`;
+  if (playing && audioProcess) {
+    // Restart audio process with updated volume setting smoothly
+    startAudio();
+  } else {
+    draw();
+  }
+}
+
+/**
+ * Toggles audio mute state.
+ */
+function toggleMute() {
+  if (!muted) {
+    previousVolume = volume;
+    muted = true;
+    message = 'AUDIO MUTED';
+  } else {
+    muted = false;
+    volume = previousVolume || 50;
+    message = `VOLUME RESTORED: ${volume}%`;
+  }
+  if (playing && audioProcess) {
+    startAudio();
+  } else {
+    draw();
+  }
 }
 
 // ----------------------------------------------------------------------------
@@ -380,6 +445,12 @@ process.stdin.on('keypress', (_, key) => {
     draw();
   } else if (key.name === 'l') {
     reloadLibrary();
+  } else if (key.name === 'plus' || key.sequence === '+' || key.sequence === '=') {
+    changeVolume(5);
+  } else if (key.name === 'minus' || key.sequence === '-') {
+    changeVolume(-5);
+  } else if (key.name === 'm') {
+    toggleMute();
   }
 });
 

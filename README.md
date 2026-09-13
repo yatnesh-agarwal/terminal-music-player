@@ -54,7 +54,12 @@ python3 -m http.server 8000
 | `n` | Next track |
 | `p` | Previous track |
 | `s` | Toggle Shuffle |
+| `+` / `-` | Volume up / down (5% increments) |
+| `m` | Toggle audio Mute |
+| `n` / `p` | Next / Previous track |
+| `s` | Toggle Shuffle mode |
 | `r` | Toggle Repeat track |
+| `l` | Reload audio library from `./music/` |
 | `q` / `Ctrl+C` | Quit player safely |
 
 ---
