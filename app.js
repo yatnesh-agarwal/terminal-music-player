@@ -10,6 +10,7 @@
  *
  * Features:
  *   - Native ANSI terminal UI with interactive track queue & live progress bar
+ *   - Multiple selectable ANSI aesthetic color themes (Cyber Lime, Matrix, Amber, Synthwave)
  *   - Dynamic library scanning: automatically discovers .mp3, .wav, .m4a in ./music
  *   - Interactive volume control with visual meter & mute toggle (+, -, m)
  *   - Signal-based audio control (afplay on macOS, SIGSTOP/SIGCONT/SIGKILL)
@@ -46,6 +47,51 @@ const DEFAULT_SONGS = [
 ];
 
 /**
+ * ANSI Color Palette Presets for Custom Aesthetic Themes.
+ */
+const THEMES = [
+  {
+    name: 'CYBER LIME',
+    accent: '\x1b[38;5;154m',
+    highlight: '\x1b[38;5;80m',
+    dim: '\x1b[38;5;245m',
+    white: '\x1b[97m',
+    warning: '\x1b[38;5;209m',
+    dark: '\x1b[48;5;235m'
+  },
+  {
+    name: 'MATRIX GREEN',
+    accent: '\x1b[38;5;46m',
+    highlight: '\x1b[38;5;82m',
+    dim: '\x1b[38;5;240m',
+    white: '\x1b[97m',
+    warning: '\x1b[38;5;190m',
+    dark: '\x1b[48;5;234m'
+  },
+  {
+    name: 'AMBER CRT',
+    accent: '\x1b[38;5;214m',
+    highlight: '\x1b[38;5;220m',
+    dim: '\x1b[38;5;240m',
+    white: '\x1b[97m',
+    warning: '\x1b[38;5;202m',
+    dark: '\x1b[48;5;236m'
+  },
+  {
+    name: 'SYNTHWAVE NEON',
+    accent: '\x1b[38;5;199m',
+    highlight: '\x1b[38;5;51m',
+    dim: '\x1b[38;5;243m',
+    white: '\x1b[97m',
+    warning: '\x1b[38;5;213m',
+    dark: '\x1b[48;5;235m'
+  }
+];
+
+let themeIndex = 0;
+const curTheme = () => THEMES[themeIndex];
+
+/**
  * Scans the local `./music` directory to automatically detect audio tracks.
  * Parses filenames into human-readable titles, artists, and clean queue items.
  *
@@ -68,7 +114,7 @@ function scanMusicDirectory() {
 
     return audioFiles.map(filename => {
       const ext = path.extname(filename);
-      const base = path.basename(filename, ext).replace(/^[0-9]+[_\s.-]+/, ''); // Strip leading numbers
+      const base = path.basename(filename, ext).replace(/^[0-9]+[_\s.-]+/, '');
       const parts = base.split(/\s*[-–—]\s*/);
 
       let title = base;
@@ -106,120 +152,85 @@ let previousVolume = 80;  // Previous volume level prior to mute
 let audioProcess = null; // Child process reference for native audio player
 let message = 'PLACE YOUR AUDIO FILES IN ./music TO PLAY';
 
-// ANSI escape sequence constants for terminal rendering
+// ANSI escape sequence constants
 const esc = '\x1b[';
-const color = {
-  reset:  '\x1b[0m',
-  lime:   '\x1b[38;5;154m',
-  dim:    '\x1b[38;5;245m',
-  white:  '\x1b[97m',
-  cyan:   '\x1b[38;5;80m',
-  orange: '\x1b[38;5;209m',
-  dark:   '\x1b[48;5;235m',
-  red:    '\x1b[38;5;196m'
-};
+const resetColor = '\x1b[0m';
+const redColor = '\x1b[38;5;196m';
 
 // ----------------------------------------------------------------------------
 // Formatting & Layout Helpers
 // ----------------------------------------------------------------------------
 
-/**
- * Truncates or pads a string to fit a fixed terminal column width.
- * @param {string|number} text - The input string to format
- * @param {number} n - Target width in characters
- * @returns {string} Fixed-width padded string
- */
 const pad = (text, n) => String(text).slice(0, n).padEnd(n);
-
-/**
- * Formats a duration in seconds into MM:SS format.
- * @param {number} n - Time in seconds
- * @returns {string} Formatted timestamp string (e.g. "3:42")
- */
 const clock = n => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
 
-/**
- * Generates an ASCII horizontal progress bar.
- * @param {number} value - Current position in seconds
- * @param {number} total - Total duration in seconds
- * @param {number} [width=44] - Total character length of the bar
- * @returns {string} ANSI-colored progress bar string
- */
 const bar = (value, total, width = 44) => {
+  const th = curTheme();
   const filled = Math.max(0, Math.min(width, Math.round((value / total) * width)));
-  return `${color.lime}${'━'.repeat(filled)}${color.dim}${'━'.repeat(width - filled)}${color.reset}`;
+  return `${th.accent}${'━'.repeat(filled)}${th.dim}${'━'.repeat(width - filled)}${resetColor}`;
 };
 
-/**
- * Renders a visual volume meter badge.
- * @returns {string} Formatted volume badge
- */
 const volumeMeter = () => {
+  const th = curTheme();
   if (muted) {
-    return `${color.red}[MUTED]${color.reset}`;
+    return `${redColor}[MUTED]${resetColor}`;
   }
   const blocks = Math.round((volume / 100) * 10);
   const visual = '■'.repeat(blocks) + '·'.repeat(10 - blocks);
-  return `${color.cyan}VOL: ${String(volume).padStart(3)}% [${color.lime}${visual}${color.cyan}]${color.reset}`;
+  return `${th.highlight}VOL: ${String(volume).padStart(3)}% [${th.accent}${visual}${th.highlight}]${resetColor}`;
 };
 
 // ----------------------------------------------------------------------------
 // Terminal Rendering Engine
 // ----------------------------------------------------------------------------
 
-/**
- * Renders the complete terminal user interface.
- * Clears the active screen buffer and draws header, status, ASCII art,
- * track details, progress bar, queue, and shortcut legends.
- */
 function draw() {
+  const th = curTheme();
   const [title, artist, album, duration] = songs[selected] || ['No Track', 'Unknown', 'None', 0, ''];
   const progress = Math.min(elapsed, duration || 1);
   const wave = '▁▂▄▆█▇▄▂▃▅▇█▅▃▁▂▄▆█▆▄▂▁';
 
-  // Format track list entries with cursor markers
   const rows = songs.map((song, i) => {
     const current = i === selected;
-    const marker = current ? `${color.lime}${playing ? '▶' : '◆'}${color.reset}` : ' ';
+    const marker = current ? `${th.accent}${playing ? '▶' : '◆'}${resetColor}` : ' ';
     const number = String(i + 1).padStart(2, '0');
-    const text = `${marker} ${number}  ${pad(song[0], 23)}  ${color.dim}${pad(song[1], 15)}${color.reset} ${clock(song[3])}`;
+    const text = `${marker} ${number}  ${pad(song[0], 23)}  ${th.dim}${pad(song[1], 15)}${resetColor} ${clock(song[3])}`;
     return current
-      ? `${color.dark}${color.white} ${pad(text.replace(/\x1b\[[0-9;]*m/g, ''), 66)} ${color.reset}`
+      ? `${th.dark}${th.white} ${pad(text.replace(/\x1b\[[0-9;]*m/g, ''), 66)} ${resetColor}`
       : `  ${text}`;
   }).join('\n');
 
   const status = playing
-    ? `${color.lime}● PLAYING${color.reset}`
-    : `${color.orange}○ PAUSED${color.reset}`;
+    ? `${th.accent}● PLAYING${resetColor}`
+    : `${th.warning}○ PAUSED${resetColor}`;
 
   const ui = `
-${color.lime}╔════════════════════════════════════════════════════════════════════╗${color.reset}
-${color.lime}║${color.reset}  ${color.white}S O N O R A${color.reset}  ${color.dim}/// TERMINAL MUSIC PLAYER${color.reset}   ${volumeMeter()} ${color.lime}║${color.reset}
-${color.lime}╚════════════════════════════════════════════════════════════════════╝${color.reset}
+${th.accent}╔════════════════════════════════════════════════════════════════════╗${resetColor}
+${th.accent}║${resetColor}  ${th.white}S O N O R A${resetColor}  ${th.dim}/// ${pad(th.name, 14)}${resetColor}        ${volumeMeter()} ${th.accent}║${resetColor}
+${th.accent}╚════════════════════════════════════════════════════════════════════╝${resetColor}
 
-  ${status}  ${color.dim}AUDIO ENGINE ONLINE · ${songs.length} TRACK(S) DISCOVERED${color.reset}
-  ${color.dim}${message}${color.reset}
+  ${status}  ${th.dim}AUDIO ENGINE ONLINE · ${songs.length} TRACK(S) DISCOVERED${resetColor}
+  ${th.dim}${message}${resetColor}
 
-  ${color.lime}NOW PLAYING${color.reset}  ${color.dim}────────────────────────────────────────────────────${color.reset}
+  ${th.accent}NOW PLAYING${resetColor}  ${th.dim}────────────────────────────────────────────────────${resetColor}
 
-  ${color.cyan}      ▄▄▄▄▄▄▄${color.reset}
-  ${color.cyan}   ▄▄${color.lime}  ${String(selected + 1).padStart(2, '0')}  ${color.cyan}▄▄${color.reset}     ${color.white}${title.toUpperCase()}${color.reset}
-  ${color.cyan}  ▄${color.lime}   ◉◉   ${color.cyan}▄${color.reset}    ${artist} ${color.dim}— ${album}${color.reset}
-  ${color.cyan}   ▀▀${color.lime}  SONORA ${color.cyan}▀▀${color.reset}
+  ${th.highlight}      ▄▄▄▄▄▄▄${resetColor}
+  ${th.highlight}   ▄▄${th.accent}  ${String(selected + 1).padStart(2, '0')}  ${th.highlight}▄▄${resetColor}     ${th.white}${title.toUpperCase()}${resetColor}
+  ${th.highlight}  ▄${th.accent}   ◉◉   ${th.highlight}▄${resetColor}    ${artist} ${th.dim}— ${album}${resetColor}
+  ${th.highlight}   ▀▀${th.accent}  SONORA ${th.highlight}▀▀${resetColor}
 
-  ${color.dim}${wave}${color.reset}
+  ${th.dim}${wave}${resetColor}
   ${clock(progress)}  ${bar(progress, duration || 1)}  ${clock(duration)}
 
-  ${color.lime}QUEUE${color.reset}        ${color.dim}TITLE                    ARTIST          TIME${color.reset}
-  ${color.dim}──────────────────────────────────────────────────────────────────${color.reset}
+  ${th.accent}QUEUE${resetColor}        ${th.dim}TITLE                    ARTIST          TIME${resetColor}
+  ${th.dim}──────────────────────────────────────────────────────────────────${resetColor}
 ${rows}
 
-  ${color.dim}↑/↓ or J/K${color.reset} select     ${color.dim}SPACE${color.reset} play/pause     ${color.dim}←/→${color.reset} seek
-  ${color.dim}+/-${color.reset} volume         ${color.dim}M${color.reset} mute toggle        ${color.dim}L${color.reset} reload library
-  ${color.dim}N/P${color.reset} next/prev       ${color.dim}S${color.reset} shuffle ${shuffle ? color.lime + 'ON' : color.dim + 'OFF'}${color.reset}       ${color.dim}R${color.reset} repeat ${repeat ? color.lime + 'ON' : color.dim + 'OFF'}${color.reset}       ${color.dim}Q${color.reset} quit
+  ${th.dim}↑/↓ or J/K${resetColor} select     ${th.dim}SPACE${resetColor} play/pause     ${th.dim}←/→${resetColor} seek
+  ${th.dim}+/-${resetColor} volume         ${th.dim}M${resetColor} mute toggle        ${th.dim}T${resetColor} cycle theme (${th.name})
+  ${th.dim}N/P${resetColor} next/prev       ${th.dim}S${resetColor} shuffle ${shuffle ? th.accent + 'ON' : th.dim + 'OFF'}${resetColor}       ${th.dim}R${resetColor} repeat ${repeat ? th.accent + 'ON' : th.dim + 'OFF'}${resetColor}       ${th.dim}L${resetColor} reload
 `;
 
-  // Write clear screen escape + home cursor + UI buffer
   process.stdout.write(`${esc}2J${esc}H${ui}`);
 }
 
@@ -227,18 +238,10 @@ ${rows}
 // Audio Playback Controller
 // ----------------------------------------------------------------------------
 
-/**
- * Resolves absolute filesystem path for a track's audio file.
- * @param {[string, string, string, number, string]} song - Song data tuple
- * @returns {string} Absolute path to audio file
- */
 function audioPath(song) {
   return path.join(__dirname, 'music', song[4]);
 }
 
-/**
- * Terminates any active background audio player process.
- */
 function stopAudio() {
   if (audioProcess) {
     audioProcess.kill('SIGKILL');
@@ -246,25 +249,15 @@ function stopAudio() {
   }
 }
 
-/**
- * Calculates current volume coefficient for afplay (-v flag).
- * @returns {number} Value between 0.0 and 1.0
- */
 function getVolumeLevel() {
   if (muted) return 0;
   return Number((volume / 100).toFixed(2));
 }
 
-/**
- * Initiates audio playback for the currently selected song.
- * Uses native macOS 'afplay' process with volume parameter.
- * @returns {boolean} True if playback started successfully, false otherwise
- */
 function startAudio() {
   if (!songs[selected]) return false;
   const file = audioPath(songs[selected]);
 
-  // Verify file existence in local storage
   if (!fs.existsSync(file)) {
     playing = false;
     message = `MISSING: music/${songs[selected][4]}`;
@@ -301,11 +294,6 @@ function startAudio() {
   }
 }
 
-/**
- * Selects a track in the playlist by index and optionally triggers playback.
- * @param {number} index - Index of track to activate
- * @param {boolean} [shouldPlay=playing] - Whether to start playback immediately
- */
 function choose(index, shouldPlay = playing) {
   stopAudio();
   selected = (index + songs.length) % songs.length;
@@ -320,16 +308,10 @@ function choose(index, shouldPlay = playing) {
   }
 }
 
-/**
- * Advances to the next track, accounting for shuffle mode.
- */
 function next() {
   choose(shuffle ? Math.floor(Math.random() * songs.length) : selected + 1);
 }
 
-/**
- * Refreshes track catalog from disk.
- */
 function reloadLibrary() {
   songs = scanMusicDirectory();
   selected = Math.min(selected, Math.max(0, songs.length - 1));
@@ -337,25 +319,17 @@ function reloadLibrary() {
   draw();
 }
 
-/**
- * Adjusts volume level.
- * @param {number} delta - Change in volume percentage
- */
 function changeVolume(delta) {
   if (muted) muted = false;
   volume = Math.max(0, Math.min(100, volume + delta));
   message = `VOLUME: ${volume}%`;
   if (playing && audioProcess) {
-    // Restart audio process with updated volume setting smoothly
     startAudio();
   } else {
     draw();
   }
 }
 
-/**
- * Toggles audio mute state.
- */
 function toggleMute() {
   if (!muted) {
     previousVolume = volume;
@@ -373,6 +347,12 @@ function toggleMute() {
   }
 }
 
+function cycleTheme() {
+  themeIndex = (themeIndex + 1) % THEMES.length;
+  message = `THEME SWITCHED: ${curTheme().name}`;
+  draw();
+}
+
 // ----------------------------------------------------------------------------
 // Terminal Lifecycle & Raw Mode Initialization
 // ----------------------------------------------------------------------------
@@ -382,16 +362,13 @@ if (!process.stdout.isTTY) {
   process.exit(1);
 }
 
-// Configure raw keyboard input stream
 readline.emitKeypressEvents(process.stdin);
 process.stdin.setRawMode(true);
 process.stdin.resume();
 
-// Hide terminal cursor for clean UI display
 process.stdout.write(`${esc}?25l`);
 draw();
 
-// Global 1-second interval ticker for updating elapsed time & progress UI
 const ticker = setInterval(() => {
   if (!playing) return;
   elapsed++;
@@ -401,9 +378,6 @@ const ticker = setInterval(() => {
   draw();
 }, 1000);
 
-// ----------------------------------------------------------------------------
-// Keypress Event Listener
-// ----------------------------------------------------------------------------
 process.stdin.on('keypress', (_, key) => {
   if (key.ctrl && key.name === 'c' || key.name === 'q') {
     quit();
@@ -417,12 +391,12 @@ process.stdin.on('keypress', (_, key) => {
       if (!audioProcess) {
         startAudio();
       } else {
-        audioProcess.kill('SIGCONT'); // Resume paused afplay process
+        audioProcess.kill('SIGCONT');
       }
     } else {
       playing = false;
       if (audioProcess) {
-        audioProcess.kill('SIGSTOP'); // Pause afplay process via signal
+        audioProcess.kill('SIGSTOP');
       }
       message = 'PAUSED';
       draw();
@@ -445,6 +419,8 @@ process.stdin.on('keypress', (_, key) => {
     draw();
   } else if (key.name === 'l') {
     reloadLibrary();
+  } else if (key.name === 't') {
+    cycleTheme();
   } else if (key.name === 'plus' || key.sequence === '+' || key.sequence === '=') {
     changeVolume(5);
   } else if (key.name === 'minus' || key.sequence === '-') {
@@ -454,9 +430,6 @@ process.stdin.on('keypress', (_, key) => {
   }
 });
 
-/**
- * Restores terminal state, clears intervals, terminates child processes, and exits.
- */
 function quit() {
   clearInterval(ticker);
   stopAudio();

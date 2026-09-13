@@ -56,6 +56,7 @@ python3 -m http.server 8000
 | `s` | Toggle Shuffle |
 | `+` / `-` | Volume up / down (5% increments) |
 | `m` | Toggle audio Mute |
+| `t` | Cycle visual ANSI color themes |
 | `n` / `p` | Next / Previous track |
 | `s` | Toggle Shuffle mode |
 | `r` | Toggle Repeat track |
