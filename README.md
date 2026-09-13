@@ -57,6 +57,7 @@ python3 -m http.server 8000
 | `+` / `-` | Volume up / down (5% increments) |
 | `m` | Toggle audio Mute |
 | `t` | Cycle visual ANSI color themes |
+| `?` / `h` | Toggle in-app keyboard shortcut help screen |
 | `n` / `p` | Next / Previous track |
 | `s` | Toggle Shuffle mode |
 | `r` | Toggle Repeat track |

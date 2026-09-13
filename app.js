@@ -10,7 +10,9 @@
  *
  * Features:
  *   - Native ANSI terminal UI with interactive track queue & live progress bar
+ *   - Animated dynamic VU equalizer waveform visualizer that dances during playback
  *   - Multiple selectable ANSI aesthetic color themes (Cyber Lime, Matrix, Amber, Synthwave)
+ *   - In-app interactive help overlay modal ('?' or 'H' key)
  *   - Dynamic library scanning: automatically discovers .mp3, .wav, .m4a in ./music
  *   - Interactive volume control with visual meter & mute toggle (+, -, m)
  *   - Signal-based audio control (afplay on macOS, SIGSTOP/SIGCONT/SIGKILL)
@@ -92,6 +94,17 @@ let themeIndex = 0;
 const curTheme = () => THEMES[themeIndex];
 
 /**
+ * Animated VU Equalizer Waveform Frames.
+ */
+const WAVES = [
+  '▁▂▄▆█▇▄▂▃▅▇█▅▃▁▂▄▆█▆▄▂▁',
+  '▃▅▇█▅▃▁▂▄▆█▇▄▂▁▂▄▆█▆▄▂▃',
+  '█▇▄▂▃▅▇█▅▃▁▂▄▆█▆▄▂▁▂▄▆█',
+  '▄▆█▆▄▂▁▂▄▆█▇▄▂▃▅▇█▅▃▁▂▄'
+];
+let waveFrame = 0;
+
+/**
  * Scans the local `./music` directory to automatically detect audio tracks.
  * Parses filenames into human-readable titles, artists, and clean queue items.
  *
@@ -149,6 +162,7 @@ let repeat = false;       // Loop current track toggle
 let volume = 80;          // Volume percentage (0 - 100)
 let muted = false;        // Mute toggle flag
 let previousVolume = 80;  // Previous volume level prior to mute
+let showHelp = false;     // In-app help modal overlay flag
 let audioProcess = null; // Child process reference for native audio player
 let message = 'PLACE YOUR AUDIO FILES IN ./music TO PLAY';
 
@@ -186,9 +200,39 @@ const volumeMeter = () => {
 
 function draw() {
   const th = curTheme();
+
+  if (showHelp) {
+    const helpBox = `
+${th.accent}╔════════════════════════════════════════════════════════════════════╗${resetColor}
+${th.accent}║${resetColor}  ${th.white}S O N O R A${resetColor}  ${th.dim}/// KEYBOARD REFERENCE GUIDE${resetColor}                      ${th.accent}║${resetColor}
+${th.accent}╚════════════════════════════════════════════════════════════════════╝${resetColor}
+
+  ${th.white}PLAYBACK CONTROLS${resetColor}
+  ${th.highlight}SPACE${resetColor}       Toggle Play / Pause
+  ${th.highlight}← / →${resetColor}       Seek Backward / Forward 10 seconds
+  ${th.highlight}N / P${resetColor}       Next Track / Previous Track
+  ${th.highlight}S / R${resetColor}       Toggle Shuffle / Toggle Repeat
+
+  ${th.white}NAVIGATION & QUEUE${resetColor}
+  ${th.highlight}↑/↓, J/K${resetColor}    Move selection cursor up / down
+  ${th.highlight}L${resetColor}           Rescan and reload ./music directory
+
+  ${th.white}AUDIO & APPEARANCE${resetColor}
+  ${th.highlight}+ / -${resetColor}       Adjust Volume (5% increments)
+  ${th.highlight}M${resetColor}           Toggle Audio Mute
+  ${th.highlight}T${resetColor}           Cycle Color Theme (${th.name})
+  ${th.highlight}? / H${resetColor}       Toggle this Help Screen
+  ${th.highlight}Q / Ctrl+C${resetColor}  Exit Sonora gracefully
+
+  ${th.dim}Press '?' or 'H' to return to player.${resetColor}
+`;
+    process.stdout.write(`${esc}2J${esc}H${helpBox}`);
+    return;
+  }
+
   const [title, artist, album, duration] = songs[selected] || ['No Track', 'Unknown', 'None', 0, ''];
   const progress = Math.min(elapsed, duration || 1);
-  const wave = '▁▂▄▆█▇▄▂▃▅▇█▅▃▁▂▄▆█▆▄▂▁';
+  const wave = playing ? WAVES[waveFrame] : WAVES[0];
 
   const rows = songs.map((song, i) => {
     const current = i === selected;
@@ -226,9 +270,9 @@ ${th.accent}╚═════════════════════�
   ${th.dim}──────────────────────────────────────────────────────────────────${resetColor}
 ${rows}
 
-  ${th.dim}↑/↓ or J/K${resetColor} select     ${th.dim}SPACE${resetColor} play/pause     ${th.dim}←/→${resetColor} seek
-  ${th.dim}+/-${resetColor} volume         ${th.dim}M${resetColor} mute toggle        ${th.dim}T${resetColor} cycle theme (${th.name})
-  ${th.dim}N/P${resetColor} next/prev       ${th.dim}S${resetColor} shuffle ${shuffle ? th.accent + 'ON' : th.dim + 'OFF'}${resetColor}       ${th.dim}R${resetColor} repeat ${repeat ? th.accent + 'ON' : th.dim + 'OFF'}${resetColor}       ${th.dim}L${resetColor} reload
+  ${th.dim}↑/↓ or J/K${resetColor} select     ${th.dim}SPACE${resetColor} play/pause     ${th.dim}←/→${resetColor} seek     ${th.dim}?${resetColor} help
+  ${th.dim}+/-${resetColor} volume         ${th.dim}M${resetColor} mute toggle        ${th.dim}T${resetColor} theme (${th.name})
+  ${th.dim}N/P${resetColor} next/prev       ${th.dim}S${resetColor} shuffle ${shuffle ? th.accent + 'ON' : th.dim + 'OFF'}${resetColor}       ${th.dim}R${resetColor} repeat ${repeat ? th.accent + 'ON' : th.dim + 'OFF'}${resetColor}       ${th.dim}Q${resetColor} quit
 `;
 
   process.stdout.write(`${esc}2J${esc}H${ui}`);
@@ -372,6 +416,7 @@ draw();
 const ticker = setInterval(() => {
   if (!playing) return;
   elapsed++;
+  waveFrame = (waveFrame + 1) % WAVES.length;
   if (songs[selected] && elapsed >= songs[selected][3]) {
     elapsed = songs[selected][3];
   }
@@ -421,6 +466,9 @@ process.stdin.on('keypress', (_, key) => {
     reloadLibrary();
   } else if (key.name === 't') {
     cycleTheme();
+  } else if (key.name === 'question' || key.sequence === '?' || key.name === 'h') {
+    showHelp = !showHelp;
+    draw();
   } else if (key.name === 'plus' || key.sequence === '+' || key.sequence === '=') {
     changeVolume(5);
   } else if (key.name === 'minus' || key.sequence === '-') {
