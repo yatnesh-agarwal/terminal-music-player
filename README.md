@@ -76,3 +76,4 @@ python3 -m http.server 8000
 ## 📜 License
 
 MIT License. Designed with ♥ for terminal enthusiasts.
+
